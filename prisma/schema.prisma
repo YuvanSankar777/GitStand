@@ -1,11 +1,11 @@
-// GitStand data model. SQLite for zero-setup local dev; switch `provider` to
-// "postgresql" and point DATABASE_URL at a hosted Postgres for production.
+// GitStand data model. Postgres in every environment (local + Vercel).
+// Schema is synced with `prisma db push` (see the vercel-build script).
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
