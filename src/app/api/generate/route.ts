@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Commit, Standup } from "@/lib/types";
 import { detectBlockers } from "@/lib/blockers";
+import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -107,6 +108,9 @@ async function callLLM(commits: Commit[], tickets: string): Promise<Standup> {
 
 export async function POST(req: Request) {
   try {
+    if (!(await getCurrentUser())) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { commits, tickets } = (await req.json()) as { commits: Commit[]; tickets?: string };
     if (!Array.isArray(commits) || commits.length === 0) {
       return NextResponse.json({ error: "No commits provided." }, { status: 400 });

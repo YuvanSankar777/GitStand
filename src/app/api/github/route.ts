@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,9 @@ function parseRepo(input: string): { owner: string; repo: string } | null {
 
 export async function POST(req: Request) {
   try {
+    if (!(await getCurrentUser())) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { repo, author, since, until } = (await req.json()) as {
       repo: string;
       author?: string;

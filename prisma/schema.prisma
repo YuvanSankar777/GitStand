@@ -1,0 +1,31 @@
+// GitStand data model. SQLite for zero-setup local dev; switch `provider` to
+// "postgresql" and point DATABASE_URL at a hosted Postgres for production.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime   @default(now())
+  standups     Standup[]
+}
+
+model Standup {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  format        String   @default("bullets")
+  rawInput      String   @default("")
+  generatedJson String // serialized { yesterday, today, blockers }
+
+  @@index([userId])
+}

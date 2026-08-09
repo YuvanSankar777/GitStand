@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,9 @@ export const runtime = "nodejs";
  */
 export async function POST(req: Request) {
   try {
+    if (!(await getCurrentUser())) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { text, webhook } = (await req.json()) as { text: string; webhook?: string };
     if (!text?.trim()) {
       return NextResponse.json({ error: "Nothing to post." }, { status: 400 });

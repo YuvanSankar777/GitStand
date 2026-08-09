@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b0e14;
-  --panel: #11151f;
-  --panel-2: #161b28;
-  --border: #232a3b;
-  --foreground: #e6e9f0;
-  --muted: #8b93a7;
-  --accent: #7c9cff;
-  --accent-2: #57e0c4;
-  --danger: #ff7a7a;
-  --warn: #ffcc66;
+  --background: #0a0a0b;
+  --panel: #141416;
+  --panel-2: #1b1b1f;
+  --border: #2a2a31;
+  --foreground: #f4f4f6;
+  --muted: #9a9aa6;
+  --accent: #ff6600; /* KTM orange */
+  --accent-2: #ff8c1a;
+  --danger: #ff5252;
+  --warn: #ffb020;
 }
 
 @theme inline {
@@ -26,6 +26,7 @@
   --color-warn: var(--warn);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
 }
 
 html,
@@ -36,8 +37,8 @@ body {
 
 body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  background-image: radial-gradient(1200px 600px at 80% -10%, rgba(124, 156, 255, 0.08), transparent 60%),
-    radial-gradient(900px 500px at 0% 110%, rgba(87, 224, 196, 0.06), transparent 55%);
+  background-image: radial-gradient(1100px 520px at 88% -12%, rgba(255, 102, 0, 0.16), transparent 60%),
+    radial-gradient(760px 420px at -5% 108%, rgba(255, 102, 0, 0.07), transparent 55%);
 }
 
 *::-webkit-scrollbar {
@@ -53,10 +54,23 @@ body {
 }
 
 textarea:focus,
+input:focus,
 [contenteditable]:focus {
   outline: none;
 }
 
 .mono {
   font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.display {
+  font-family: var(--font-display), var(--font-geist-sans), sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+}
+
+/* KTM-style angular orange slash */
+.slash {
+  clip-path: polygon(14% 0, 100% 0, 86% 100%, 0% 100%);
 }
