@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Pin the workspace root so builds ignore any stray lockfile above this dir.
+  turbopack: { root: __dirname },
 };
 
 export default nextConfig;

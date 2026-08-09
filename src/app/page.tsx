@@ -1,69 +1,410 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { parseGitLog } from "@/lib/parser";
+import { detectBlockers } from "@/lib/blockers";
+import { formatStandup } from "@/lib/formatters";
+import { SAMPLE_GIT_LOG, SAMPLE_TICKETS } from "@/lib/sample";
+import { FORMAT_LABELS, type Standup, type StandupFormat } from "@/lib/types";
+
+type HistoryItem = { id: string; when: string; standup: Standup };
+
+const HISTORY_KEY = "gitstand.history.v1";
 
 export default function Home() {
+  const [log, setLog] = useState("");
+  const [tickets, setTickets] = useState("");
+  const [showTickets, setShowTickets] = useState(false);
+  const [standup, setStandup] = useState<Standup | null>(null);
+  const [format, setFormat] = useState<StandupFormat>("bullets");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [usedMock, setUsedMock] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) setHistory(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const commits = useMemo(() => parseGitLog(log), [log]);
+  const signals = useMemo(() => detectBlockers(commits), [commits]);
+
+  const formatted = useMemo(
+    () => (standup ? formatStandup(standup, format) : ""),
+    [standup, format],
+  );
+
+  async function generate() {
+    setError(null);
+    setLoading(true);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commits, tickets }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed");
+      setStandup(data.standup as Standup);
+      setUsedMock(Boolean(data.usedMock));
+      saveHistory(data.standup as Standup);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function saveHistory(s: Standup) {
+    const item: HistoryItem = {
+      id: `${commits.length}-${log.length}-${history.length}`,
+      when: new Date().toLocaleString(),
+      standup: s,
+    };
+    const next = [item, ...history].slice(0, 8);
+    setHistory(next);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    } catch {}
+  }
+
+  function updateItem(key: keyof Standup, idx: number, value: string) {
+    if (!standup) return;
+    const next = { ...standup, [key]: [...standup[key]] };
+    next[key][idx] = value;
+    setStandup(next);
+  }
+  function removeItem(key: keyof Standup, idx: number) {
+    if (!standup) return;
+    const next = { ...standup, [key]: standup[key].filter((_, i) => i !== idx) };
+    setStandup(next);
+  }
+  function addItem(key: keyof Standup) {
+    if (!standup) return;
+    setStandup({ ...standup, [key]: [...standup[key], ""] });
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(formatted);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {}
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 py-6">
+      <Header />
+
+      <main className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        {/* LEFT: input */}
+        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-panel p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold tracking-wide text-foreground">
+              1 · Paste your git log
+            </h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setLog(SAMPLE_GIT_LOG);
+                  setTickets(SAMPLE_TICKETS);
+                  setShowTickets(true);
+                }}
+                className="rounded-lg border border-border bg-panel-2 px-2.5 py-1 text-xs text-muted transition hover:text-foreground"
+              >
+                Load sample
+              </button>
+              {log && (
+                <button
+                  onClick={() => {
+                    setLog("");
+                    setTickets("");
+                    setStandup(null);
+                  }}
+                  className="rounded-lg border border-border bg-panel-2 px-2.5 py-1 text-xs text-muted transition hover:text-foreground"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <textarea
+            value={log}
+            onChange={(e) => setLog(e.target.value)}
+            placeholder={"$ git log --oneline\n\nPaste your commits here…"}
+            spellCheck={false}
+            className="mono h-64 w-full resize-none rounded-xl border border-border bg-[#0c0f17] p-4 text-[13px] leading-relaxed text-foreground placeholder:text-muted/60"
+          />
+
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span>
+              <span className="text-accent-2">{commits.length}</span> commit
+              {commits.length === 1 ? "" : "s"} parsed
+            </span>
+            {signals.length > 0 && (
+              <span className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-warn">
+                {signals.length} blocker signal{signals.length === 1 ? "" : "s"} detected
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={() => setShowTickets((v) => !v)}
+            className="w-fit text-xs text-muted underline-offset-2 hover:underline"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+            {showTickets ? "− Hide tickets" : "+ Add closed tickets (optional)"}
+          </button>
+          {showTickets && (
+            <textarea
+              value={tickets}
+              onChange={(e) => setTickets(e.target.value)}
+              placeholder="AUTH-142 Implement refresh token rotation"
+              spellCheck={false}
+              className="mono h-20 w-full resize-none rounded-xl border border-border bg-[#0c0f17] p-3 text-[13px] text-foreground placeholder:text-muted/60"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          )}
+
+          <button
+            onClick={generate}
+            disabled={loading || commits.length === 0}
+            className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-[#0b0e14] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Documentation
-          </a>
-        </div>
+            {loading ? (
+              <>
+                <Spinner /> Generating…
+              </>
+            ) : (
+              <>⚡ Generate standup</>
+            )}
+          </button>
+
+          {history.length > 0 && (
+            <div className="mt-2 border-t border-border pt-3">
+              <p className="mb-2 text-xs font-medium text-muted">Recent standups</p>
+              <div className="flex flex-col gap-1.5">
+                {history.slice(0, 4).map((h) => (
+                  <button
+                    key={h.id}
+                    onClick={() => setStandup(h.standup)}
+                    className="flex items-center justify-between rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-left text-xs text-muted transition hover:text-foreground"
+                  >
+                    <span>{h.when}</span>
+                    <span className="text-accent-2">
+                      {h.standup.yesterday.length}✓ · {h.standup.blockers.length}⚠
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* RIGHT: output */}
+        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-panel p-5">
+          {error && (
+            <div className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+              {error}
+            </div>
+          )}
+
+          {!standup && !error && <EmptyState hasCommits={commits.length > 0} />}
+
+          {standup && (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold tracking-wide text-foreground">
+                  2 · Review &amp; edit your draft
+                </h2>
+                {usedMock && (
+                  <span className="rounded-full border border-border bg-panel-2 px-2 py-0.5 text-[10px] text-muted">
+                    offline mock — add GROQ_API_KEY for live AI
+                  </span>
+                )}
+              </div>
+
+              <EditableSection
+                title="Yesterday"
+                accent="var(--accent-2)"
+                items={standup.yesterday}
+                onChange={(i, v) => updateItem("yesterday", i, v)}
+                onRemove={(i) => removeItem("yesterday", i)}
+                onAdd={() => addItem("yesterday")}
+              />
+              <EditableSection
+                title="Today"
+                accent="var(--accent)"
+                items={standup.today}
+                onChange={(i, v) => updateItem("today", i, v)}
+                onRemove={(i) => removeItem("today", i)}
+                onAdd={() => addItem("today")}
+              />
+              <EditableSection
+                title="Blockers"
+                accent="var(--warn)"
+                highlight
+                items={standup.blockers}
+                onChange={(i, v) => updateItem("blockers", i, v)}
+                onRemove={(i) => removeItem("blockers", i)}
+                onAdd={() => addItem("blockers")}
+              />
+
+              {/* Formatted output */}
+              <div className="mt-1 rounded-xl border border-border bg-[#0c0f17]">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <div className="flex flex-wrap gap-1">
+                    {(Object.keys(FORMAT_LABELS) as StandupFormat[]).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setFormat(f)}
+                        className={`rounded-md px-2.5 py-1 text-xs transition ${
+                          format === f
+                            ? "bg-accent text-[#0b0e14]"
+                            : "text-muted hover:text-foreground"
+                        }`}
+                      >
+                        {FORMAT_LABELS[f]}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={copy}
+                    className="rounded-md border border-border bg-panel-2 px-2.5 py-1 text-xs text-foreground transition hover:brightness-125"
+                  >
+                    {copied ? "✓ Copied" : "Copy"}
+                  </button>
+                </div>
+                <pre className="mono max-h-64 overflow-auto whitespace-pre-wrap p-4 text-[13px] leading-relaxed text-foreground">
+                  {formatted}
+                </pre>
+              </div>
+            </>
+          )}
+        </section>
       </main>
+
+      <footer className="mt-5 text-center text-xs text-muted">
+        GitStand — Geekbot asks you what you did. GitStand already knows.
+      </footer>
     </div>
+  );
+}
+
+function Header() {
+  return (
+    <header className="mb-6 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-panel-2 text-lg">
+          🧍
+        </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight">GitStand</h1>
+          <p className="text-xs text-muted">Your commits, written up as your standup.</p>
+        </div>
+      </div>
+      <span className="hidden rounded-lg border border-border bg-panel px-3 py-1.5 text-xs text-muted sm:block">
+        solo build · ~10h
+      </span>
+    </header>
+  );
+}
+
+function EmptyState({ hasCommits }: { hasCommits: boolean }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="text-4xl opacity-60">📝</div>
+      <p className="max-w-xs text-sm text-muted">
+        {hasCommits
+          ? 'Hit "Generate standup" to turn these commits into a review-ready update.'
+          : "Paste a git log on the left — or click Load sample — and generate your standup."}
+      </p>
+    </div>
+  );
+}
+
+function EditableSection({
+  title,
+  accent,
+  items,
+  highlight = false,
+  onChange,
+  onRemove,
+  onAdd,
+}: {
+  title: string;
+  accent: string;
+  items: string[];
+  highlight?: boolean;
+  onChange: (i: number, v: string) => void;
+  onRemove: (i: number) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-3.5"
+      style={{
+        borderColor: highlight && items.length ? "var(--warn)" : "var(--border)",
+        background: highlight && items.length ? "rgba(255,204,102,0.06)" : "var(--panel-2)",
+      }}
+    >
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full" style={{ background: accent }} />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">{title}</h3>
+        {highlight && items.length > 0 && (
+          <span className="text-[10px] text-warn">auto-flagged</span>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {items.length === 0 && <p className="text-xs text-muted">— none —</p>}
+        {items.map((item, i) => (
+          <div key={i} className="group flex items-start gap-2">
+            <span className="mt-2 select-none" style={{ color: accent }}>
+              •
+            </span>
+            <AutoTextarea value={item} onChange={(v) => onChange(i, v)} />
+            <button
+              onClick={() => onRemove(i)}
+              className="mt-1 select-none text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger"
+              aria-label="Remove"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <button onClick={onAdd} className="mt-2 text-xs text-muted underline-offset-2 hover:underline">
+        + add
+      </button>
+    </div>
+  );
+}
+
+function AutoTextarea({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={1}
+      className="flex-1 resize-none overflow-hidden rounded-md bg-transparent px-1 py-1 text-[13px] leading-snug text-foreground focus:bg-[#0c0f17]"
+    />
+  );
+}
+
+function Spinner() {
+  return (
+    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#0b0e14]/40 border-t-[#0b0e14]" />
   );
 }
