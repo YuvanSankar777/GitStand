@@ -28,7 +28,11 @@ Rules:
 
 function buildUserPrompt(commits: Commit[], tickets: string): string {
   const commitLines = commits
-    .map((c) => `${c.hash} ${c.message}${c.files.length ? ` [files: ${c.files.join(", ")}]` : ""}`)
+    .map((c) => {
+      const body = c.body ? `\n    ${c.body}` : "";
+      const files = c.files.length ? ` [files: ${c.files.join(", ")}]` : "";
+      return `${c.hash} ${c.message}${files}${body}`;
+    })
     .join("\n");
   return `COMMITS:\n${commitLines || "(none)"}\n\nTICKETS (optional):\n${tickets.trim() || "(none)"}`;
 }

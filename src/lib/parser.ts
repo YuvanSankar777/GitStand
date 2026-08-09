@@ -39,7 +39,7 @@ function parseOneline(text: string): Commit[] {
     if (!HEX.test(hash)) continue;
     const message = stripRefs(line.slice(spaceIdx + 1));
     if (!message) continue;
-    commits.push({ hash: hash.slice(0, 10), message, timestamp: null, author: null, files: [] });
+    commits.push({ hash: hash.slice(0, 10), message, body: "", timestamp: null, author: null, files: [] });
   }
   return commits;
 }
@@ -52,8 +52,11 @@ function parseFull(text: string): Commit[] {
 
   const flush = () => {
     if (!current) return;
-    const message = bodyLines.map((l) => l.trim()).filter(Boolean).join(" — ").trim();
-    if (message) current.message = message;
+    const paras = bodyLines.map((l) => l.trim()).filter(Boolean);
+    if (paras.length) {
+      current.message = paras[0]; // subject line
+      current.body = paras.slice(1).join(" ").trim(); // rest as body context
+    }
     commits.push(current);
     bodyLines.length = 0;
   };
@@ -63,7 +66,7 @@ function parseFull(text: string): Commit[] {
     const commitMatch = line.match(/^commit\s+([0-9a-f]{7,40})/i);
     if (commitMatch) {
       flush();
-      current = { hash: commitMatch[1].slice(0, 10), message: "", timestamp: null, author: null, files: [] };
+      current = { hash: commitMatch[1].slice(0, 10), message: "", body: "", timestamp: null, author: null, files: [] };
       continue;
     }
     if (!current) continue;
