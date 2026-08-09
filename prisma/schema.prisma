@@ -9,13 +9,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Company {
+  id              String   @id @default(cuid())
+  domain          String   @unique // e.g. "acme.com" — derived from member emails
+  name            String
+  slackWebhookURL String? // shared team channel
+  createdAt       DateTime @default(now())
+  users           User[]
+}
+
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime   @default(now())
-  standups     Standup[]
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String?
+  role            String    @default("member") // "admin" can set the company channel
+  slackWebhookURL String? // personal override; takes precedence over company
+  companyId       String?
+  company         Company?  @relation(fields: [companyId], references: [id])
+  createdAt       DateTime  @default(now())
+  standups        Standup[]
+
+  @@index([companyId])
 }
 
 model Standup {

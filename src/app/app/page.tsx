@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { parseGitLog } from "@/lib/parser";
 import { detectBlockers } from "@/lib/blockers";
 import { formatStandup } from "@/lib/formatters";
@@ -434,6 +435,12 @@ function TopBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
       </div>
       <div className="flex items-center gap-3">
         {email && <span className="hidden text-xs text-muted sm:block">{email}</span>}
+        <Link
+          href="/app/settings"
+          className="rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-xs text-foreground transition hover:border-accent hover:text-accent"
+        >
+          Settings
+        </Link>
         <button
           onClick={onLogout}
           className="rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-xs text-foreground transition hover:border-accent hover:text-accent"

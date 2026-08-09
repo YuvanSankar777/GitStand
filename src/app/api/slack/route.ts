@@ -1,26 +1,42 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 /**
- * Posts a standup to Slack via an incoming webhook.
- * Webhook URL comes from SLACK_WEBHOOK_URL (preferred) or the request body.
+ * Resolve which Slack channel a user's standup goes to:
+ *   personal webhook  ->  company webhook  ->  global env fallback (demo).
+ * A webhook is bound to one channel at creation, so this routing IS the channel.
  */
+async function resolveWebhook(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { company: true },
+  });
+  return (
+    user?.slackWebhookURL ||
+    user?.company?.slackWebhookURL ||
+    process.env.SLACK_WEBHOOK_URL ||
+    null
+  );
+}
+
 export async function POST(req: Request) {
   try {
-    if (!(await getCurrentUser())) {
+    const session = await getCurrentUser();
+    if (!session) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-    const { text, webhook } = (await req.json()) as { text: string; webhook?: string };
+    const { text } = (await req.json()) as { text: string };
     if (!text?.trim()) {
       return NextResponse.json({ error: "Nothing to post." }, { status: 400 });
     }
 
-    const url = process.env.SLACK_WEBHOOK_URL || webhook;
+    const url = await resolveWebhook(session.id);
     if (!url) {
       return NextResponse.json(
-        { error: "not_configured", detail: "Set SLACK_WEBHOOK_URL in .env.local to enable posting." },
+        { error: "not_configured", detail: "Add a Slack channel in Settings to enable posting." },
         { status: 400 },
       );
     }

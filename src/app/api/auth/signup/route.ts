@@ -27,11 +27,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An account with that email already exists." }, { status: 409 });
     }
 
+    // Group users into a Company by email domain. First member of a domain is admin.
+    const domain = cleanEmail.split("@")[1];
+    const company = await prisma.company.findUnique({ where: { domain } });
+    const isFirstOfDomain = !company;
+    const companyId =
+      company?.id ??
+      (await prisma.company.create({ data: { domain, name: domain } })).id;
+
     const user = await prisma.user.create({
       data: {
         email: cleanEmail,
         passwordHash: await hashPassword(password),
         name: name?.trim() || null,
+        companyId,
+        role: isFirstOfDomain ? "admin" : "member",
       },
       select: { id: true, email: true, name: true },
     });
