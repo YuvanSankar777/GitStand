@@ -23,6 +23,17 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
+  // GitHub auto-pull
+  const [showGithub, setShowGithub] = useState(false);
+  const [ghRepo, setGhRepo] = useState("");
+  const [ghAuthor, setGhAuthor] = useState("");
+  const [ghWindow, setGhWindow] = useState<"1" | "7" | "0">("7");
+  const [ghLoading, setGhLoading] = useState(false);
+
+  // Slack post
+  const [slackState, setSlackState] = useState<"idle" | "posting" | "posted" | "error">("idle");
+  const [slackMsg, setSlackMsg] = useState("");
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
@@ -97,6 +108,54 @@ export default function Home() {
     } catch {}
   }
 
+  async function fetchGithub() {
+    setError(null);
+    setGhLoading(true);
+    try {
+      const since =
+        ghWindow === "0"
+          ? undefined
+          : new Date(Date.now() - Number(ghWindow) * 86400000).toISOString();
+      const res = await fetch("/api/github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: ghRepo, author: ghAuthor || undefined, since }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fetch failed");
+      if (!data.log) throw new Error("No commits found for that repo/author/window.");
+      setLog(data.log);
+      setStandup(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "GitHub fetch failed");
+    } finally {
+      setGhLoading(false);
+    }
+  }
+
+  async function postSlack() {
+    setSlackState("posting");
+    setSlackMsg("");
+    try {
+      const res = await fetch("/api/slack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: formatted }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSlackState("error");
+        setSlackMsg(data.detail || data.error || "Post failed");
+        return;
+      }
+      setSlackState("posted");
+      setTimeout(() => setSlackState("idle"), 2500);
+    } catch {
+      setSlackState("error");
+      setSlackMsg("Network error");
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 py-6">
       <Header />
@@ -133,6 +192,52 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          <button
+            onClick={() => setShowGithub((v) => !v)}
+            className="flex w-fit items-center gap-1.5 text-xs text-accent underline-offset-2 hover:underline"
+          >
+            {showGithub ? "− Hide GitHub pull" : "⤓ Pull commits from a GitHub repo"}
+          </button>
+          {showGithub && (
+            <div className="flex flex-col gap-2 rounded-xl border border-border bg-panel-2 p-3">
+              <input
+                value={ghRepo}
+                onChange={(e) => setGhRepo(e.target.value)}
+                placeholder="owner/repo  ·  or  https://github.com/owner/repo"
+                spellCheck={false}
+                className="mono w-full rounded-lg border border-border bg-[#0c0f17] px-3 py-2 text-[13px] text-foreground placeholder:text-muted/60"
+              />
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={ghAuthor}
+                  onChange={(e) => setGhAuthor(e.target.value)}
+                  placeholder="author (optional)"
+                  spellCheck={false}
+                  className="mono min-w-0 flex-1 rounded-lg border border-border bg-[#0c0f17] px-3 py-2 text-[13px] text-foreground placeholder:text-muted/60"
+                />
+                <select
+                  value={ghWindow}
+                  onChange={(e) => setGhWindow(e.target.value as "1" | "7" | "0")}
+                  className="rounded-lg border border-border bg-[#0c0f17] px-2 py-2 text-[13px] text-foreground"
+                >
+                  <option value="1">Last 24h</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="0">Recent</option>
+                </select>
+                <button
+                  onClick={fetchGithub}
+                  disabled={ghLoading || !ghRepo.trim()}
+                  className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-[#0b0e14] transition enabled:hover:brightness-110 disabled:opacity-40"
+                >
+                  {ghLoading ? <Spinner /> : "Fetch"}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted">
+                Public repos work with no setup. Private repos need GITHUB_TOKEN in .env.local.
+              </p>
+            </div>
+          )}
 
           <textarea
             value={log}
@@ -272,13 +377,29 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={copy}
-                    className="rounded-md border border-border bg-panel-2 px-2.5 py-1 text-xs text-foreground transition hover:brightness-125"
-                  >
-                    {copied ? "✓ Copied" : "Copy"}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={postSlack}
+                      disabled={slackState === "posting"}
+                      className="flex items-center gap-1 rounded-md border border-border bg-panel-2 px-2.5 py-1 text-xs text-foreground transition hover:brightness-125 disabled:opacity-50"
+                    >
+                      {slackState === "posting"
+                        ? "Posting…"
+                        : slackState === "posted"
+                          ? "✓ Posted"
+                          : "Post to Slack"}
+                    </button>
+                    <button
+                      onClick={copy}
+                      className="rounded-md border border-border bg-panel-2 px-2.5 py-1 text-xs text-foreground transition hover:brightness-125"
+                    >
+                      {copied ? "✓ Copied" : "Copy"}
+                    </button>
+                  </div>
                 </div>
+                {slackState === "error" && (
+                  <p className="border-b border-border px-3 py-1.5 text-[11px] text-warn">{slackMsg}</p>
+                )}
                 <pre className="mono max-h-64 overflow-auto whitespace-pre-wrap p-4 text-[13px] leading-relaxed text-foreground">
                   {formatted}
                 </pre>
