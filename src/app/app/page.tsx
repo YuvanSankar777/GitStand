@@ -499,7 +499,10 @@ function EditableSection({
         {items.length === 0 && <p className="text-xs text-muted">— none —</p>}
         {items.map((item, i) => (
           <div key={i} className="group flex items-start gap-2">
-            <span className="mt-2 select-none" style={{ color: accent }}>
+            <span
+              className="select-none py-1 text-[13px] leading-snug"
+              style={{ color: accent }}
+            >
               •
             </span>
             <AutoTextarea value={item} onChange={(v) => onChange(i, v)} />
