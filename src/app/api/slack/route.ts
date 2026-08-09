@@ -44,10 +44,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "That doesn't look like a Slack incoming webhook URL." }, { status: 400 });
     }
 
+    // Stamp the author (from the session, so it can't be spoofed) onto the post,
+    // and try to override the webhook's display name/icon. The header is the
+    // guaranteed attribution since some workspaces ignore the username override.
+    const author = session.name?.trim() || session.email;
+    const date = new Date().toISOString().slice(0, 10);
+    const header =
+      session.name?.trim()
+        ? `:runner: *${author}* · ${session.email} — standup for ${date}`
+        : `:runner: *${session.email}* — standup for ${date}`;
+
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text: `${header}\n\n${text}`,
+        username: `${author} · GitStand`,
+        icon_emoji: ":runner:",
+      }),
     });
 
     if (!res.ok) {
