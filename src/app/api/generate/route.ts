@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 // Groq is OpenAI-compatible. Key from console.groq.com starts with "gsk_".
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+// Broadly-available model to retry with if the configured one is missing/gated.
+const FALLBACK_MODEL = "llama-3.1-8b-instant";
 const API_KEY = process.env.GROQ_API_KEY || process.env.XAI_API_KEY;
 
 const SYSTEM_PROMPT = `You are a standup assistant. Given a developer's git commits (and optional
@@ -73,15 +75,12 @@ function mergeBlockers(standup: Standup, commits: Commit[]): Standup {
   return { ...standup, blockers: [...standup.blockers, ...extra] };
 }
 
-async function callLLM(commits: Commit[], tickets: string): Promise<Standup> {
-  const key = API_KEY;
-  if (!key) return mockStandup(commits);
-
-  const res = await fetch(GROQ_URL, {
+async function requestGroq(key: string, model: string, commits: Commit[], tickets: string) {
+  return fetch(GROQ_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [
@@ -90,6 +89,18 @@ async function callLLM(commits: Commit[], tickets: string): Promise<Standup> {
       ],
     }),
   });
+}
+
+async function callLLM(commits: Commit[], tickets: string): Promise<Standup> {
+  const key = API_KEY;
+  if (!key) return mockStandup(commits);
+
+  let res = await requestGroq(key, MODEL, commits, tickets);
+
+  // If the configured model isn't available to this key, retry with a stable one.
+  if (res.status === 404 && MODEL !== FALLBACK_MODEL) {
+    res = await requestGroq(key, FALLBACK_MODEL, commits, tickets);
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
