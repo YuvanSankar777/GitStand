@@ -7,9 +7,9 @@ export const runtime = "nodejs";
 
 // Groq is OpenAI-compatible. Key from console.groq.com starts with "gsk_".
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-// Broadly-available model to retry with if the configured one is missing/gated.
-const FALLBACK_MODEL = "llama-3.1-8b-instant";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+// Retry model if the configured one isn't available to this key/account.
+const FALLBACK_MODEL = "openai/gpt-oss-20b";
 const API_KEY = process.env.GROQ_API_KEY || process.env.XAI_API_KEY;
 
 const SYSTEM_PROMPT = `You are a standup assistant. Given a developer's git commits (and optional
